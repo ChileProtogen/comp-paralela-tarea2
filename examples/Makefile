@@ -1,0 +1,479 @@
+#
+#  File        : Makefile
+#                ( Makefile for GNU 'make' utility )
+#
+#  Description : Makefile for compiling CImg-based code on Unix.
+#                This file is a part of the CImg Library project.
+#                ( http://cimg.eu )
+#
+#  Copyright   : David Tschumperlé
+#                ( http://tschumperle.users.greyc.fr/ )
+#
+#  License     : CeCILL v2.0
+#                ( http://www.cecill.info/licences/Licence_CeCILL_V2-en.html )
+#
+#  This software is governed by the CeCILL  license under French law and
+#  abiding by the rules of distribution of free software.  You can  use,
+#  modify and/ or redistribute the software under the terms of the CeCILL
+#  license as circulated by CEA, CNRS and INRIA at the following URL
+#  "http://www.cecill.info".
+#
+#  As a counterpart to the access to the source code and  rights to copy,
+#  modify and redistribute granted by the license, users are provided only
+#  with a limited warranty  and the software's author,  the holder of the
+#  economic rights,  and the successive licensors  have only  limited
+#  liability.
+#
+#  In this respect, the user's attention is drawn to the risks associated
+#  with loading,  using,  modifying and/or developing or reproducing the
+#  software by the user in light of its specific status of free software,
+#  that may mean  that it is complicated to manipulate,  and  that  also
+#  therefore means  that it is reserved for developers  and  experienced
+#  professionals having in-depth computer knowledge. Users are therefore
+#  encouraged to load and test the software's suitability as regards their
+#  requirements in conditions enabling the security of their systems and/or
+#  data to be ensured and,  more generally, to use and operate it in the
+#  same conditions as regards security.
+#
+#  The fact that you are presently reading this means that you have had
+#  knowledge of the CeCILL license and that you accept its terms.
+#
+
+#-------------------------------------------------------
+# Define the list of files to be compiled
+# (name of the source files without the .cpp extension)
+#-------------------------------------------------------
+
+# Files which do not necessarily require external libraries to run.
+FILES = CImg_demo \
+	captcha \
+	curve_editor2d \
+	dtmri_view3d \
+	edge_explorer2d \
+	fade_images \
+	gaussian_fit1d \
+	generate_loop_macros \
+	hough_transform2d \
+	image_registration2d \
+	image2ascii \
+	image_surface3d \
+	jawbreaker \
+	mcf_levelsets2d \
+	mcf_levelsets3d \
+	odykill \
+	pde_heatflow2d \
+	pde_TschumperleDeriche2d \
+	plotter1d \
+	radon_transform2d \
+	scene3d \
+	spherical_function3d \
+	tetris \
+	tron \
+	tutorial \
+	wavelet_atrous \
+	use_chlpca \
+	use_draw_gradient \
+	use_nlmeans \
+	use_skeleton \
+	use_RGBclass
+
+# Files which requires external libraries to run.
+EXTRA_FILES = test_template_types \
+              use_tiff_stream \
+              use_jpeg_buffer
+
+#---------------------------------
+# Set correct variables and paths
+#---------------------------------
+VERSION  := $(shell awk '/cimg_version[[:space:]]/ {print $$3; exit}' ../CImg.h)
+SVERSION := $(shell awk '/cimg_version[[:space:]]/ {v=$$3; printf "%d.%d.%d", int(v/100), int((v%100)/10), v%10; exit}' ../CImg.h)
+
+EXE_EXT =
+ifneq ($(filter MINGW32 MINGW64,$(MSYSTEM)),)
+EXE_EXT = .exe
+endif
+
+ifneq ($(findstring clang++,$(notdir $(CXX))),)
+IS_CLANG = 1
+else ifneq ($(findstring g++,$(notdir $(CXX))),)
+IS_GCC = 1
+else ifneq ($(findstring icpc,$(notdir $(CXX))),)
+IS_ICPC = 1
+else ifeq ($(IS_GCC)$(IS_CLANG)$(IS_ICPC),)
+CXX_ID := $(shell $(CXX) --version 2>&1 | head -n 1)
+ifneq ($(findstring clang,$(CXX_ID)),)
+IS_CLANG = 1
+else ifneq ($(findstring GCC,$(CXX_ID)),)
+IS_GCC = 1
+endif
+endif
+
+CXXVER := $(CXX)
+CFLAGS = -I.. -Wall -Wextra -Wfatal-errors -Werror=unknown-pragmas -Werror=unused-label
+LIBS = -lm
+ifdef IS_CLANG
+CXXVER := $(shell $(CXX) -v 2>&1 | head -n 1)
+else ifdef IS_GCC
+CXXVER := $(shell $(CXX) -v 2>&1 | tail -n 1)
+else ifdef IS_ICPC
+CXXVER := $(shell $(CXX) -v 2>&1)
+CFLAGS = -I..
+LIBS =
+endif
+
+ifdef IS_GCC
+GCC_MAJOR := $(shell $(CXX) -dumpversion | cut -d. -f1)
+GCC_VER_GTEQ5 := $(shell [ $(GCC_MAJOR) -ge 5 ] && echo 1 || echo 0)
+ifeq ($(GCC_VER_GTEQ5),1)
+CFLAGS += -Wshadow
+endif
+CFLAGS += -Wno-int-in-bool-context -Wno-bool-compare
+endif
+
+STRIP ?= strip
+
+#--------------------------------------------------
+# Set compilation flags allowing to customize CImg
+#--------------------------------------------------
+
+# Flags to enable color output messages.
+# (requires a VT100 compatible terminal)
+VT100_CFLAGS = -Dcimg_use_vt100
+
+# Flags to enable strict code standards
+CXX11_CFLAGS = -std=c++11
+ifndef IS_ICPC
+CXX11_CFLAGS += -pedantic
+endif
+
+# Flags to enable code debugging.
+DEBUG_CFLAGS = -Dcimg_verbosity=3 -Dcimg_strict_warnings -g
+ifneq ($(IS_CLANG)$(IS_GCC),)
+DEBUG_CFLAGS += -fsanitize=address
+endif
+
+# Flags to enable code optimization by the compiler.
+OPT_CFLAGS = -O3
+ifdef IS_GCC
+ifeq ($(EXE_EXT),)
+  NO_MTUNE_GENERIC := $(shell echo | $(CXX) -mtune=generic -E - > /dev/null 2>&1; echo $$?)
+  ifeq ($(NO_MTUNE_GENERIC),0)
+    OPT_CFLAGS += -mtune=generic
+  endif
+else
+  OPT_CFLAGS += -mtune=generic
+endif
+endif
+ifdef IS_ICPC
+OPT_CFLAGS = -fast
+endif
+
+# Flags to enable OpenMP support.
+OPENMP_DEFINE = -Dcimg_use_openmp -fopenmp
+OPENMP_INCDIR =
+OPENMP_CFLAGS = $(OPENMP_DEFINE) $(OPENMP_INCDIR)
+ifdef IS_ICPC
+# -Dcimg_use_openmp -openmp -i-static -> Seems to bug the compiler!
+OPENMP_CFLAGS =
+endif
+
+# Flags to enable OpenCV support.
+OPENCV_DEFINE = -Dcimg_use_opencv
+OPENCV_INCDIR := $(shell pkg-config --cflags opencv4 2>/dev/null || pkg-config --cflags opencv 2>/dev/null || echo -I/usr/include/opencv4 -I/usr/include/opencv)
+OPENCV_CFLAGS = $(OPENCV_DEFINE) $(OPENCV_INCDIR)
+OPENCV_LIBS := $(shell pkg-config --libs opencv4 2>/dev/null || pkg-config --libs opencv 2>/dev/null || echo -lopencv_core -lopencv_highgui -lopencv_videoio)
+
+# Flags used to disable display capablities of CImg
+NODISPLAY_CFLAGS = -Dcimg_display=0
+
+# Flags to enable the use of the X11 library.
+# (X11 is used by CImg to handle display windows)
+X11_DEFINE = -Dcimg_display=1
+X11_INCDIR := $(shell pkg-config --cflags x11 2>/dev/null || echo -I/usr/X11R6/include)
+X11_CFLAGS = $(X11_DEFINE) $(X11_INCDIR)
+X11_LIBS := $(shell pkg-config --libs x11 2>/dev/null || echo -L/usr/X11R6/lib -lX11) -pthread
+
+# Flags to enable fast image display, using the XSHM library (when using X11).
+# !!! Seems to randomly crash when used on MacOS and 64bits systems, so use it only when necessary !!!
+XSHM_CFLAGS := # -Dcimg_use_xshm $(shell pkg-config --cflags xcb-shm 2>/dev/null)
+XSHM_LIBS := # $(shell pkg-config --libs xcb-shm 2>/dev/null || echo -L/usr/X11R6/lib -lXext)
+
+# Flags to enable screen mode switching, using the XRandr library (when using X11).
+# ( http://www.x.org/wiki/Projects/XRandR )
+# !!! Not supported by the X11 server on MacOS, so do not use it on MacOS !!!
+XRANDR_DEFINE = -Dcimg_use_xrandr
+XRANDR_INCDIR := $(shell pkg-config --cflags xrandr 2>/dev/null)
+XRANDR_CFLAGS = $(XRANDR_DEFINE) $(XRANDR_INCDIR)
+XRANDR_LIBS := $(shell pkg-config --libs xrandr 2>/dev/null || echo -lXrandr)
+
+# Flags to enable GDI32 display (Windows native).
+GDI32_DEFINE =
+GDI32_INCDIR =
+GDI32_CFLAGS = $(GDI32_DEFINE) $(GDI32_INCDIR) -mwindows
+GDI32_LIBS = -lgdi32
+
+# Flags to enable SDL3 display.
+SDL3_DEFINE = -Dcimg_display=3
+SDL3_INCDIR := $(shell pkg-config --cflags sdl3 2>/dev/null || echo -I/usr/local/include)
+SDL3_CFLAGS = $(SDL3_DEFINE) $(SDL3_INCDIR)
+SDL3_LIBS := $(shell pkg-config --libs sdl3 2>/dev/null || echo -L/usr/local/lib -lSDL3)
+
+# Flags to enable native support for PNG image files, using the PNG library.
+# ( http://www.libpng.org/ )
+PNG_DEFINE = -Dcimg_use_png
+PNG_INCDIR := $(shell pkg-config --cflags libpng 2>/dev/null)
+PNG_CFLAGS = $(PNG_DEFINE) $(PNG_INCDIR)
+PNG_LIBS := $(shell pkg-config --libs libpng 2>/dev/null || echo -lpng -lz)
+
+# Flags to enable native support for JPEG image files, using the JPEG library.
+# ( http://www.ijg.org/ )
+JPEG_DEFINE = -Dcimg_use_jpeg
+JPEG_INCDIR := $(shell pkg-config --cflags libjpeg 2>/dev/null)
+JPEG_CFLAGS = $(JPEG_DEFINE) $(JPEG_INCDIR)
+JPEG_LIBS := $(shell pkg-config --libs libjpeg 2>/dev/null || echo -ljpeg)
+
+# Flags to enable native support for JPEG XL image files, using the JXL library.
+# ( https://github.com/libjxl/libjxl )
+JXL_DEFINE = -Dcimg_use_jxl
+JXL_INCDIR := $(shell pkg-config --cflags libjxl 2>/dev/null)
+JXL_CFLAGS = $(JXL_DEFINE) $(JXL_INCDIR)
+JXL_LIBS := $(shell pkg-config --libs libjxl 2>/dev/null || echo -ljxl)
+
+# Flags to enable native support for TIFF image files, using the TIFF library.
+# ( http://www.libtiff.org/ )
+TIFF_DEFINE = -Dcimg_use_tiff
+TIFF_INCDIR := $(shell pkg-config --cflags libtiff-4 2>/dev/null)
+TIFF_CFLAGS = $(TIFF_DEFINE) $(TIFF_INCDIR)
+TIFF_LIBS := $(shell pkg-config --libs libtiff-4 2>/dev/null || echo -ltiff)
+
+# Flags to enable native support for loading HEIF image files, using the libheif library.
+# ( https://github.com/strukturag/libheif )
+HEIF_DEFINE = -Dcimg_use_heif
+HEIF_INCDIR := $(shell pkg-config --cflags libheif 2>/dev/null)
+HEIF_CFLAGS = $(HEIF_DEFINE) $(HEIF_INCDIR)
+HEIF_LIBS := $(shell pkg-config --libs libheif 2>/dev/null || echo -lheif)
+
+# Flags to enable native support for MINC2 image files, using the MINC2 library.
+# ( http://en.wikibooks.org/wiki/MINC/Reference/MINC2.0_Users_Guide )
+MINC2_DEFINE = -Dcimg_use_minc2
+MINC2_INCDIR = -I$(HOME)/local/include
+MINC2_CFLAGS = $(MINC2_DEFINE) $(MINC2_INCDIR)
+MINC2_LIBS = -L$(HOME)/local/lib -lminc_io -lvolume_io2 -lminc2 -lnetcdf -lhdf5 -lz
+
+# Flags to enable native support for EXR image files, using the OpenEXR library.
+# ( http://www.openexr.com/ )
+OPENEXR_DEFINE = -Dcimg_use_openexr
+OPENEXR_INCDIR := $(shell pkg-config --cflags OpenEXR 2>/dev/null || echo -I/usr/include/OpenEXR)
+OPENEXR_CFLAGS = $(OPENEXR_DEFINE) $(OPENEXR_INCDIR)
+OPENEXR_LIBS := $(shell pkg-config --libs OpenEXR 2>/dev/null || echo -lIlmImf -lHalf)
+
+# Flags to enable native support for various video files, using the FFMPEG library.
+# ( http://www.ffmpeg.org/ )
+FFMPEG_DEFINE = -Dcimg_use_ffmpeg -D__STDC_CONSTANT_MACROS
+FFMPEG_INCDIR := $(shell pkg-config --cflags libavcodec libavformat libswscale 2>/dev/null || echo -I/usr/include/libavcodec -I/usr/include/libavformat -I/usr/include/libswscale -I/usr/include/ffmpeg)
+FFMPEG_CFLAGS = $(FFMPEG_DEFINE) $(FFMPEG_INCDIR)
+FFMPEG_LIBS := $(shell pkg-config --libs libavcodec libavformat libswscale 2>/dev/null || echo -lavcodec -lavformat -lswscale)
+
+# Flags to enable native support for compressed .cimgz files, using the Zlib library.
+# ( http://www.zlib.net/ )
+ZLIB_DEFINE = -Dcimg_use_zlib
+ZLIB_INCDIR := $(shell pkg-config --cflags zlib 2>/dev/null || echo -I/usr/include)
+ZLIB_CFLAGS = $(ZLIB_DEFINE) $(ZLIB_INCDIR)
+ZLIB_LIBS := $(shell pkg-config --libs zlib 2>/dev/null || echo -lz)
+
+# Flags to enable native support for downloading files from the network.
+# ( http://curl.haxx.se/libcurl/ )
+CURL_DEFINE = -Dcimg_use_curl
+CURL_INCDIR := $(shell pkg-config --cflags libcurl 2>/dev/null)
+CURL_CFLAGS = $(CURL_DEFINE) $(CURL_INCDIR)
+CURL_LIBS := $(shell pkg-config --libs libcurl 2>/dev/null || echo -lcurl)
+
+# Flags to enable native support of most classical image file formats, using the Magick++ library.
+# ( http://www.imagemagick.org/Magick++/ )
+MAGICK_DEFINE = -Dcimg_use_magick
+MAGICK_INCDIR := $(shell pkg-config --cflags GraphicsMagick++ 2>/dev/null || echo -I/usr/include/GraphicsMagick)
+MAGICK_CFLAGS = $(MAGICK_DEFINE) $(MAGICK_INCDIR)
+MAGICK_LIBS := $(shell pkg-config --libs GraphicsMagick++ 2>/dev/null || echo -lGraphicsMagick++)
+
+# Flags to enable faster Discrete Fourier Transform computation, using the FFTW3 library
+# ( http://www.fftw.org/ )
+FFTW3_DEFINE = -Dcimg_use_fftw3
+FFTW3_INCDIR := $(shell pkg-config --cflags fftw3 2>/dev/null)
+FFTW3_CFLAGS = $(FFTW3_DEFINE) $(FFTW3_INCDIR)
+ifneq ($(filter MINGW32 MINGW64,$(MSYSTEM)),)
+FFTW3_LIBS = -lfftw3-3
+else
+FFTW3_LIBS = -lfftw3 -lfftw3_threads
+endif
+
+# Enable native support of WebP image files, using the WebP library.
+# (https://chromium.googlesource.com/webm/libwebp/)
+WEBP_DEFINE = -Dcimg_use_webp
+WEBP_INCDIR := $(shell pkg-config --cflags libwebp 2>/dev/null || echo -I/usr/include/webp)
+WEBP_CFLAGS = $(WEBP_DEFINE) $(WEBP_INCDIR)
+WEBP_LIBS := $(shell pkg-config --libs libwebp 2>/dev/null || echo -lwebp)
+
+#-------------------------
+# Define Makefile entries
+#-------------------------
+.PHONY: all clean menu linux dlinux olinux mlinux Mlinux \
+        macos dmacos omacos mmacos Mmacos \
+        windows dwindows owindows mwindows Mwindows \
+        travis custom
+
+%$(EXE_EXT): %.cpp
+	@echo
+	@echo "** Compiling '$* ($(SVERSION))' with '$(CXXVER)'"
+	@echo
+	$(CXX) $(CFLAGS) $(CONF_CFLAGS) -o $@ $< $(LIBS) $(CONF_LIBS)
+ifeq ($(STRIP_EXE),true)
+	$(STRIP) $@
+endif
+
+menu:
+	@echo
+	@echo "CImg Library $(SVERSION) : Examples"
+	@echo "-----------------------------"
+	@echo "  > linux    : Linux/BSD target, X11 display, optimizations disabled."
+	@echo "  > dlinux   : Linux/BSD target, X11 display, debug mode."
+	@echo "  > olinux   : Linux/BSD target, X11 display, optimizations enabled."
+	@echo "  > mlinux   : Linux/BSD target, no display, minimal features, optimizations enabled."
+	@echo "  > Mlinux   : Linux/BSD target, X11 display, maximal features, optimizations enabled."
+	@echo
+	@echo "  > macos    : MacOS target, X11 display, optimizations disabled."
+	@echo "  > dmacos   : MacOS target, X11 display, debug mode."
+	@echo "  > omacos   : MacOS target, X11 display, optimizations enabled."
+	@echo "  > mmacos   : MacOS target, no display, minimal features, optimizations enabled."
+	@echo "  > Mmacos   : MacOS target, X11 display, maximal features, optimizations enabled."
+	@echo
+	@echo "  > windows  : Windows target, GDI32 display, optimizations disabled."
+	@echo "  > dwindows : Windows target, GDI32 display, debug mode."
+	@echo "  > owindows : Windows target, GDI32 display, optimizations enabled."
+	@echo "  > mwindows : Windows target, no display, minimal features, optimizations enabled."
+	@echo "  > Mwindows : Windows target, GDI32 display, maximal features, optimizations enabled."
+	@echo
+	@echo "  > clean    : Clean generated files."
+	@echo
+	@echo "Choose your option :"
+	@read CHOICE; echo; $(MAKE) $$CHOICE; echo; echo "> Next time, you can bypass the menu by typing directly 'make $$CHOICE'"; echo;
+
+all: $(FILES)
+
+clean:
+	$(RM) *.exe *.o *.obj *~ \#* $(FILES) $(EXTRA_FILES)
+
+# Custom user-defined target
+custom:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(CXX11_CFLAGS) $(VT100_CFLAGS) $(TIFF_CFLAGS) $(HEIF_CFLAGS) $(X11_CFLAGS) $(XSHM_CFLAGS)" \
+"CONF_LIBS = $(X11_LIBS) $(TIFF_LIBS) $(HEIF_LIBS) $(XSHM_LIBS)" \
+all $(EXTRA_FILES)
+
+# Linux/BSD/Mac OSX targets, with X11 display.
+
+# A target for Travis-CI
+travis:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(CXX11_CFLAGS) $(VT100_CFLAGS) $(X11_CFLAGS) $(FFTW3_CFLAGS) $(PNG_CFLAGS) $(JPEG_CFLAGS) $(CURL_CFLAGS) $(XSHM_CFLAGS)" \
+"CONF_LIBS = $(X11_LIBS) $(FFTW3_LIBS) $(PNG_LIBS) $(JPEG_LIBS) $(CURL_LIBS) $(XSHM_LIBS)" \
+all
+
+linux:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(CXX11_CFLAGS) $(VT100_CFLAGS) $(X11_CFLAGS) $(XSHM_CFLAGS)" \
+"CONF_LIBS = $(X11_LIBS) $(XSHM_LIBS)" \
+all
+
+dlinux:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(CXX11_CFLAGS) $(DEBUG_CFLAGS) $(VT100_CFLAGS) $(X11_CFLAGS) $(XSHM_CFLAGS)" \
+"CONF_LIBS = $(X11_LIBS) $(XSHM_LIBS)" \
+all
+
+olinux:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(CXX11_CFLAGS) $(OPT_CFLAGS) $(OPENMP_CFLAGS) $(VT100_CFLAGS) $(X11_CFLAGS) $(XSHM_CFLAGS)" \
+"CONF_LIBS = $(X11_LIBS) $(XSHM_LIBS)" \
+"STRIP_EXE=true" \
+all
+
+mlinux:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(CXX11_CFLAGS) $(NODISPLAY_CFLAGS) $(OPT_CFLAGS)" \
+"STRIP_EXE=true" \
+all
+
+Mlinux:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(OPT_CFLAGS) $(VT100_CFLAGS) $(X11_CFLAGS) $(XSHM_CFLAGS) $(XRANDR_CFLAGS) $(TIFF_CFLAGS) $(HEIF_CFLAGS) $(OPENEXR_CFLAGS) $(PNG_CFLAGS) $(JPEG_CFLAGS) $(ZLIB_CFLAGS) $(CURL_CFLAGS) $(OPENCV_CFLAGS) $(MAGICK_CFLAGS) $(FFTW3_CFLAGS)" \
+"CONF_LIBS = $(X11_LIBS) $(XSHM_LIBS) $(XRANDR_LIBS) $(TIFF_LIBS) $(HEIF_LIBS) $(OPENEXR_LIBS) $(PNG_LIBS) $(JPEG_LIBS) $(ZLIB_LIBS) $(CURL_LIBS) $(OPENCV_LIBS) $(MAGICK_LIBS) $(FFTW3_LIBS)" \
+"STRIP_EXE=true" \
+all $(EXTRA_FILES)
+
+# MacOs targets, with X11 display.
+macos:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(CXX11_CFLAGS) $(VT100_CFLAGS) $(X11_CFLAGS)" \
+"CONF_LIBS = $(X11_LIBS)" \
+all
+
+dmacos:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(CXX11_CFLAGS) $(DEBUG_CFLAGS) $(VT100_CFLAGS) $(X11_CFLAGS)" \
+"CONF_LIBS = $(X11_LIBS)" \
+all
+
+omacos:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(CXX11_CFLAGS) $(OPT_CFLAGS) $(VT100_CFLAGS) $(X11_CFLAGS)" \
+"CONF_LIBS = $(X11_LIBS)" \
+"STRIP_EXE=true" \
+all
+
+mmacos:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(CXX11_CFLAGS) $(NODISPLAY_CFLAGS) $(OPT_CFLAGS)" \
+"STRIP_EXE=true" \
+all
+
+Mmacos:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(OPT_CFLAGS) $(VT100_CFLAGS) $(X11_CFLAGS) $(TIFF_CFLAGS) $(HEIF_CFLAGS) $(MINC2_CFLAGS) $(OPENEXR_CFLAGS) $(PNG_CFLAGS) $(JPEG_CFLAGS) $(ZLIB_CFLAGS) $(OPENCV_CFLAGS) $(MAGICK_CFLAGS) $(FFTW3_CFLAGS)" \
+"CONF_LIBS = $(X11_LIBS) $(TIFF_LIBS) $(HEIF_LIBS) $(MINC2_LIBS) $(OPENEXR_LIBS) $(PNG_LIBS) $(JPEG_LIBS) $(ZLIB_LIBS) $(OPENCV_LIBS) $(MAGICK_LIBS) $(FFTW3_LIBS)" \
+"STRIP_EXE=true" \
+all $(EXTRA_FILES)
+
+# Windows targets, with GDI32 display.
+windows:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(GDI32_CFLAGS)" \
+"CONF_LIBS = $(GDI32_LIBS)" \
+all
+
+dwindows:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(DEBUG_CFLAGS) $(GDI32_CFLAGS)" \
+"CONF_LIBS = $(GDI32_LIBS)" \
+all
+
+owindows:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(OPT_CFLAGS) $(GDI32_CFLAGS)" \
+"CONF_LIBS = $(GDI32_LIBS)" \
+"STRIP_EXE=true" \
+all
+
+mwindows:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(NODISPLAY_CFLAGS) $(OPT_CFLAGS)" \
+"STRIP_EXE=true" \
+all
+
+Mwindows:
+	@$(MAKE) --no-print-directory $(MAKEFLAGS) \
+"CONF_CFLAGS = $(OPT_CFLAGS) $(GDI32_CFLAGS) $(TIFF_CFLAGS) $(HEIF_CFLAGS) $(PNG_CFLAGS) $(JPEG_CFLAGS) $(ZLIB_CFLAGS) $(OPENCV_CFLAGS) $(FFTW3_CFLAGS)" \
+"CONF_LIBS = $(GDI32_LIBS) $(TIFF_LIBS) $(HEIF_LIBS) $(PNG_LIBS) $(JPEG_LIBS) $(ZLIB_LIBS) $(OPENCV_LIBS) $(FFTW3_LIBS)" \
+"STRIP_EXE=true" \
+all $(EXTRA_FILES)
+
+# End of makefile
