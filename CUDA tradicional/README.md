@@ -1,7 +1,7 @@
 Para compilar
 
 ```
-nvcc -O3 tarea2.cu -o tarea2 -lpng -lpthread
+nvcc -O3 tarea2_ex1.cu -o tarea2_ex1 -lpng -lpthread
 ```
 
 Para ejecutar
