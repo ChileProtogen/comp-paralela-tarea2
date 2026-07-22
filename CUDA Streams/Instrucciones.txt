@@ -1,0 +1,17 @@
+Primero evidentemente se abre la carpeta y se ejecuta una terminal de windows en ella, o bien change directory
+
+(Se ejecutó en windows 11)
+
+Primer paso:
+
+Compilar el módulo de carga 
+nvcc -O2 -c carga.cpp -o carga.obj -ccbin "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.43.34808\bin\Hostx64\x64" 
+la versión de MSVC puede cambiar
+
+Segundo Paso:
+compilar y enlazar el código CUDA
+nvcc -O2 -arch=sm_86 -m64 tarea2.cu carga.obj -o programa.exe -ccbin "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.43.34808\bin\Hostx64\x64"
+
+luego ejecutar el programa así
+
+./programa.exe <x> con x en {1,2,4,8,16}, los valores que se nos solicitaron
